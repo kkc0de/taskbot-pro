@@ -6,9 +6,6 @@ from yaml.loader import SafeLoader
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-if hasattr(st, "secrets") and len(st.secrets) > 0:
-    os.environ.update(st.secrets)
- 
 from langchain_groq import ChatGroq
 from langchain.agents import create_agent
 from langchain_community.utilities import SQLDatabase
@@ -24,6 +21,11 @@ st.set_page_config(
     layout="wide"
 )
 
+
+if hasattr(st, "secrets") and len(st.secrets) > 0:
+    os.environ.update(st.secrets)
+
+ 
 # Auth Config
 
 CONFIG_FILE = "auth_config.yaml"
