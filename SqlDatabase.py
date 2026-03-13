@@ -14,6 +14,10 @@ from langgraph.checkpoint.memory import InMemorySaver
 import urllib.parse
 from sqlalchemy.pool import NullPool
 
+if hasattr(st, "secrets") and len(st.secrets) > 0:
+    os.environ.update(st.secrets)
+
+
 # Page Formatting
 st.set_page_config(
     page_title="TaskBot Pro | SQL Intelligence",
@@ -21,90 +25,6 @@ st.set_page_config(
     layout="wide"
 )
 
-
-if hasattr(st, "secrets") and len(st.secrets) > 0:
-    os.environ.update(st.secrets)
-
- 
-# Auth Config
-
-CONFIG_FILE = "auth_config.yaml"
- 
-if not os.path.exists(CONFIG_FILE):
-    default_config = {
-        "credentials": {
-            "usernames": {}
-        },
-        "cookie": {
-            "name": "taskbot_pro_cookie",
-            "key": "taskbot_super_secret_key_2026",
-            "expiry_days": 7
-        }
-    }
-    with open(CONFIG_FILE, "w") as f:
-        yaml.dump(default_config, f)
- 
-with open(CONFIG_FILE) as f:
-    config = yaml.load(f, Loader=SafeLoader)
- 
-authenticator = stauth.Authenticate(
-    config["credentials"],
-    config["cookie"]["name"],
-    config["cookie"]["key"],
-    config["cookie"]["expiry_days"]
-)
-
-# Login / Register UI
-
-if not st.session_state.get("authentication_status"):
- 
-    st.markdown("""
-    <div style="
-        text-align: center;
-        padding: 48px 40px 40px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 24px;
-        backdrop-filter: blur(20px);
-        background-image: linear-gradient(135deg, rgba(139,92,246,0.1) 0%, transparent 50%, rgba(34,211,238,0.05) 100%);
-        margin-bottom: 36px;
-    ">
-        <div style="
-            display: inline-block; padding: 6px 16px; border-radius: 100px;
-            font-size: 11px; letter-spacing: 2px; font-weight: 500; text-transform: uppercase;
-            background: rgba(139,92,246,0.2); border: 1px solid rgba(139,92,246,0.4);
-            color: #a78bfa; margin-bottom: 20px; font-family: 'DM Sans', sans-serif;
-        ">⚡ AI-Powered Task Intelligence</div>
-        <h1 style="
-            font-family: 'Syne', sans-serif; font-size: 3.4rem; font-weight: 800;
-            background: linear-gradient(135deg, #fff 0%, #a78bfa 50%, #22d3ee 100%);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text; letter-spacing: -1px; line-height: 1.1; margin: 0 0 12px 0;
-        ">TaskBot Pro</h1>
-        <p style="font-size: 0.95rem; color: rgba(255,255,255,0.4); font-family: 'DM Sans', sans-serif; font-weight: 300; margin: 0;">
-            The Proactive Neural Bridge for <strong style="color:rgba(255,255,255,0.6)">PostgreSQL</strong> 🧠
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
- 
-    tab1, tab2 = st.tabs(["🔐 Login", "📝 Register"])
- 
-    with tab1:
-        authenticator.login(location="main")
-        if st.session_state.get("authentication_status") is False:
-            st.error("❌ Incorrect username or password")
- 
-    with tab2:
-        try:
-            email, username, name = authenticator.register_user(location="main")
-            if email:
-                with open(CONFIG_FILE, "w") as f:
-                    yaml.dump(config, f)
-                st.success(f"✅ Account created! Welcome **{name}** — go to Login tab to sign in.")
-        except Exception as e:
-            st.error(f"Registration error: {e}")
- 
-    st.stop()
 
 # Glassmorphism CSS
 
@@ -206,6 +126,85 @@ hr { border-color: rgba(255,255,255,0.08) !important; }
 </style>
 """, unsafe_allow_html=True)
 
+# Auth Config
+
+CONFIG_FILE = "auth_config.yaml"
+ 
+if not os.path.exists(CONFIG_FILE):
+    default_config = {
+        "credentials": {
+            "usernames": {}
+        },
+        "cookie": {
+            "name": "taskbot_pro_cookie",
+            "key": "taskbot_super_secret_key_2026",
+            "expiry_days": 7
+        }
+    }
+    with open(CONFIG_FILE, "w") as f:
+        yaml.dump(default_config, f)
+ 
+with open(CONFIG_FILE) as f:
+    config = yaml.load(f, Loader=SafeLoader)
+ 
+authenticator = stauth.Authenticate(
+    config["credentials"],
+    config["cookie"]["name"],
+    config["cookie"]["key"],
+    config["cookie"]["expiry_days"]
+)
+
+# Login / Register UI
+
+if not st.session_state.get("authentication_status"):
+ 
+    st.markdown("""
+    <div style="
+        text-align: center;
+        padding: 48px 40px 40px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 24px;
+        backdrop-filter: blur(20px);
+        background-image: linear-gradient(135deg, rgba(139,92,246,0.1) 0%, transparent 50%, rgba(34,211,238,0.05) 100%);
+        margin-bottom: 36px;
+    ">
+        <div style="
+            display: inline-block; padding: 6px 16px; border-radius: 100px;
+            font-size: 11px; letter-spacing: 2px; font-weight: 500; text-transform: uppercase;
+            background: rgba(139,92,246,0.2); border: 1px solid rgba(139,92,246,0.4);
+            color: #a78bfa; margin-bottom: 20px; font-family: 'DM Sans', sans-serif;
+        ">⚡ AI-Powered Task Intelligence</div>
+        <h1 style="
+            font-family: 'Syne', sans-serif; font-size: 3.4rem; font-weight: 800;
+            background: linear-gradient(135deg, #fff 0%, #a78bfa 50%, #22d3ee 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; letter-spacing: -1px; line-height: 1.1; margin: 0 0 12px 0;
+        ">TaskBot Pro</h1>
+        <p style="font-size: 0.95rem; color: rgba(255,255,255,0.4); font-family: 'DM Sans', sans-serif; font-weight: 300; margin: 0;">
+            The Proactive Neural Bridge for <strong style="color:rgba(255,255,255,0.6)">PostgreSQL</strong> 🧠
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+ 
+    tab1, tab2 = st.tabs(["🔐 Login", "📝 Register"])
+ 
+    with tab1:
+        authenticator.login(location="main")
+        if st.session_state.get("authentication_status") is False:
+            st.error("❌ Incorrect username or password")
+ 
+    with tab2:
+        try:
+            email, username, name = authenticator.register_user(location="main")
+            if email:
+                with open(CONFIG_FILE, "w") as f:
+                    yaml.dump(config, f)
+                st.success(f"✅ Account created! Welcome **{name}** — go to Login tab to sign in.")
+        except Exception as e:
+            st.error(f"Registration error: {e}")
+ 
+    st.stop()
 
 # Authenticated
 
