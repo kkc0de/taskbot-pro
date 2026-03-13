@@ -13,6 +13,7 @@ wikipedia
 langchain-text-splitters
 chromadb
 streamlit-authenticator
+psycopg2-binary
 
 
 
