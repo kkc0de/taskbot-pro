@@ -160,7 +160,7 @@ authenticator = stauth.Authenticate(
 
 # Login / Register UI
 
-if not st.session_state.get("authentication_status") is None or st.session_state.get("authentication_status") is False:
+if not st.session_state.get("authentication_status"):
  
     st.markdown("""
     <div style="
@@ -382,7 +382,8 @@ with col_title:
  
 with col_logout:
     st.markdown("<br><br><br>", unsafe_allow_html=True)
-    authenticator.logout("Logout", location="main")
+    if st.session_state.get("authentication_status"):
+        authenticator.logout("Logout", location="main")
 
 # Metrics
 
