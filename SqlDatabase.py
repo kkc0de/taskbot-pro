@@ -25,11 +25,15 @@ st.set_page_config(
     layout="wide"
 )
 
+# Google Fonts
+
+st.markdown("""
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+""",unsafe_allow_html=True)
 
 # Glassmorphism CSS
 
 st.markdown("""
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
     --purple: #8b5cf6;
@@ -156,7 +160,7 @@ authenticator = stauth.Authenticate(
 
 # Login / Register UI
 
-if not st.session_state.get("authentication_status") !=False :
+if not st.session_state.get("authentication_status") is None or st.session_state.get("authentication_status") is False:
  
     st.markdown("""
     <div style="
