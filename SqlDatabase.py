@@ -156,7 +156,7 @@ authenticator = stauth.Authenticate(
 
 # Login / Register UI
 
-if not st.session_state.get("authentication_status"):
+if not st.session_state.get("authentication_status") !=False :
  
     st.markdown("""
     <div style="
