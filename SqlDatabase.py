@@ -1,6 +1,5 @@
 import os
 import streamlit as st
-import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 from dotenv import load_dotenv
@@ -13,26 +12,25 @@ from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langgraph.checkpoint.memory import InMemorySaver
 import urllib.parse
 from sqlalchemy.pool import NullPool
+from sqlalchemy import create_engine, text
+import bcrypt
 
 if hasattr(st, "secrets") and len(st.secrets) > 0:
     os.environ.update(st.secrets)
 
-
-# Page Formatting
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="TaskBot Pro | SQL Intelligence",
     page_icon="⚡",
     layout="wide"
 )
 
-# Google Fonts
-
+# ── Google Fonts ──────────────────────────────────────────────────────────────
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-""",unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# Glassmorphism CSS
-
+# ── Glassmorphism CSS ─────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 :root {
@@ -56,8 +54,6 @@ st.markdown("""
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 2rem 3rem !important; max-width: 1100px !important; }
 .stApp, .stApp p, .stApp label, .stApp div { color: #f1f0ff !important; font-family: 'DM Sans', sans-serif !important; }
- 
-/* ── Auth form styling ── */
 .stTextInput input {
     background: rgba(255,255,255,0.06) !important;
     border: 1px solid rgba(255,255,255,0.12) !important;
@@ -80,8 +76,6 @@ st.markdown("""
     width: 100% !important;
 }
 .stButton button:hover { opacity: 0.9 !important; transform: translateY(-1px) !important; }
- 
-/* ── Metric cards ── */
 [data-testid="metric-container"] {
     background: rgba(255,255,255,0.04) !important;
     border: 1px solid rgba(255,255,255,0.08) !important;
@@ -92,11 +86,7 @@ st.markdown("""
 [data-testid="metric-container"]:hover { border-color: rgba(139,92,246,0.4) !important; transform: translateY(-2px) !important; }
 [data-testid="metric-container"] label { font-size: 10px !important; letter-spacing: 2px !important; text-transform: uppercase !important; color: rgba(255,255,255,0.4) !important; }
 [data-testid="metric-container"] [data-testid="stMetricValue"] { font-size: 0.95rem !important; font-weight: 500 !important; color: #f1f0ff !important; }
- 
-/* ── Alert box ── */
 .stAlert { background: rgba(139,92,246,0.08) !important; border: 1px solid rgba(139,92,246,0.25) !important; border-radius: 12px !important; color: rgba(255,255,255,0.6) !important; }
- 
-/* ── Chat messages ── */
 [data-testid="stChatMessage"] {
     background: rgba(255,255,255,0.04) !important;
     border: 1px solid rgba(255,255,255,0.08) !important;
@@ -109,20 +99,15 @@ st.markdown("""
     border-color: rgba(139,92,246,0.25) !important;
     background: rgba(139,92,246,0.06) !important;
 }
- 
-/* ── Tables ── */
 table { width: 100% !important; border-collapse: collapse !important; font-size: 0.82rem !important; margin-top: 10px !important; }
 thead tr th { padding: 8px 14px !important; text-align: left !important; color: #a78bfa !important; font-size: 10px !important; letter-spacing: 2px !important; text-transform: uppercase !important; border-bottom: 1px solid rgba(139,92,246,0.3) !important; background: transparent !important; }
 tbody tr td { padding: 8px 14px !important; border-bottom: 1px solid rgba(255,255,255,0.05) !important; color: #f1f0ff !important; }
 tbody tr:hover td { background: rgba(139,92,246,0.06) !important; }
- 
-/* ── Chat input ── */
 [data-testid="stChatInput"] { background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 16px !important; backdrop-filter: blur(12px) !important; }
 [data-testid="stChatInput"]:focus-within { border-color: rgba(139,92,246,0.5) !important; box-shadow: 0 0 0 2px rgba(139,92,246,0.15) !important; }
 [data-testid="stChatInput"] textarea { color: #f1f0ff !important; font-family: 'DM Sans', sans-serif !important; background: transparent !important; }
 [data-testid="stChatInput"] textarea::placeholder { color: rgba(255,255,255,0.3) !important; }
 [data-testid="stChatInput"] button { background: linear-gradient(135deg, #8b5cf6, #22d3ee) !important; border-radius: 50% !important; border: none !important; }
- 
 hr { border-color: rgba(255,255,255,0.08) !important; }
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -130,38 +115,88 @@ hr { border-color: rgba(255,255,255,0.08) !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# Auth Config
+# ── DB Engine (shared, for auth + tasks) ─────────────────────────────────────
+host = os.getenv("DB_HOST")
+port = os.getenv("DB_PORT")
+user_db = os.getenv("DB_USER")
+password_db = os.getenv("DB_PASSWORD")
+db_name = os.getenv("DB_NAME")
 
-CONFIG_FILE = "auth_config.yaml"
- 
-if not os.path.exists(CONFIG_FILE):
-    default_config = {
-        "credentials": {
-            "usernames": {}
-        },
-        "cookie": {
-            "name": "taskbot_pro_cookie",
-            "key": "taskbot_super_secret_key_2026",
-            "expiry_days": 7
-        }
-    }
-    with open(CONFIG_FILE, "w") as f:
-        yaml.dump(default_config, f)
- 
-with open(CONFIG_FILE) as f:
-    config = yaml.load(f, Loader=SafeLoader)
- 
-authenticator = stauth.Authenticate(
-    config["credentials"],
-    config["cookie"]["name"],
-    config["cookie"]["key"],
-    config["cookie"]["expiry_days"]
-)
+encoded_user = urllib.parse.quote_plus(user_db)
+encoded_password = urllib.parse.quote_plus(password_db)
+db_uri = f"postgresql+psycopg2://{encoded_user}:{encoded_password}@{host}:{port}/{db_name}?sslmode=require"
 
-# Login / Register UI
+engine = create_engine(db_uri, poolclass=NullPool)
 
-if not st.session_state.get("authentication_status"):
- 
+# ── Create tables if not exist ────────────────────────────────────────────────
+with engine.connect() as conn:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT CHECK (status IN ('pending','in_progress','completed')) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """))
+    conn.commit()
+
+# ── Auth helper functions ─────────────────────────────────────────────────────
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
+def register_user(username, name, email, password):
+    with engine.connect() as conn:
+        # Check if username or email already exists
+        existing = conn.execute(
+            text("SELECT username FROM users WHERE username = :u OR email = :e"),
+            {"u": username, "e": email}
+        ).fetchone()
+        if existing:
+            return False, "Username or email already exists."
+        conn.execute(
+            text("INSERT INTO users (username, name, email, password) VALUES (:u, :n, :e, :p)"),
+            {"u": username, "n": name, "e": email, "p": hash_password(password)}
+        )
+        conn.commit()
+        return True, "Success"
+
+def login_user(username, password):
+    with engine.connect() as conn:
+        user = conn.execute(
+            text("SELECT username, name, password FROM users WHERE username = :u"),
+            {"u": username}
+        ).fetchone()
+        if not user:
+            return False, None, None
+        if verify_password(password, user[2]):
+            return True, user[0], user[1]
+        return False, None, None
+
+# ── Session state init ────────────────────────────────────────────────────────
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "username" not in st.session_state:
+    st.session_state.username = None
+if "name" not in st.session_state:
+    st.session_state.name = None
+
+# ── Login / Register UI ───────────────────────────────────────────────────────
+if not st.session_state.authenticated:
+
     st.markdown("""
     <div style="
         text-align: center;
@@ -190,79 +225,77 @@ if not st.session_state.get("authentication_status"):
         </p>
     </div>
     """, unsafe_allow_html=True)
- 
+
     tab1, tab2 = st.tabs(["🔐 Login", "📝 Register"])
- 
+
     with tab1:
-        authenticator.login(location="main")
-        if st.session_state.get("authentication_status") is False:
-            st.error("❌ Incorrect username or password")
- 
+        login_username = st.text_input("Username", key="login_username")
+        login_password = st.text_input("Password", type="password", key="login_password")
+        if st.button("Login", key="login_btn"):
+            if login_username and login_password:
+                success, uname, uname_full = login_user(login_username, login_password)
+                if success:
+                    st.session_state.authenticated = True
+                    st.session_state.username = uname
+                    st.session_state.name = uname_full
+                    st.rerun()
+                else:
+                    st.error("❌ Incorrect username or password")
+            else:
+                st.warning("Please fill in all fields")
+
     with tab2:
-        try:
-            email, username, name = authenticator.register_user(location="main")
-            if email:
-                with open(CONFIG_FILE, "w") as f:
-                    yaml.dump(config, f)
-                st.success(f"✅ Account created! Welcome **{name}** — go to Login tab to sign in.")
-        except Exception as e:
-            st.error(f"Registration error: {e}")
- 
+        reg_name = st.text_input("Full Name", key="reg_name")
+        reg_email = st.text_input("Email", key="reg_email")
+        reg_username = st.text_input("Username", key="reg_username")
+        reg_password = st.text_input("Password", type="password", key="reg_password")
+        reg_password2 = st.text_input("Repeat Password", type="password", key="reg_password2")
+        if st.button("Register", key="register_btn"):
+            if reg_name and reg_email and reg_username and reg_password and reg_password2:
+                if reg_password != reg_password2:
+                    st.error("❌ Passwords do not match")
+                elif len(reg_password) < 6:
+                    st.error("❌ Password must be at least 6 characters")
+                else:
+                    success, msg = register_user(reg_username, reg_name, reg_email, reg_password)
+                    if success:
+                        st.success(f"✅ Account created! Welcome **{reg_name}** — go to Login tab to sign in.")
+                    else:
+                        st.error(f"❌ {msg}")
+            else:
+                st.warning("Please fill in all fields")
+
     st.stop()
 
-# Authenticated
+# ── Authenticated from here ───────────────────────────────────────────────────
+username = st.session_state.username
+name = st.session_state.name
 
-username = st.session_state["username"]
-name = st.session_state["name"]
-
-# DB Connection
-
-host = os.getenv("DB_HOST")
-port = os.getenv("DB_PORT")
-user_db = os.getenv("DB_USER")
-password_db = os.getenv("DB_PASSWORD")
-db_name = os.getenv("DB_NAME")
- 
-encoded_user = urllib.parse.quote_plus(user_db)
-encoded_password = urllib.parse.quote_plus(password_db)
- 
-db_uri = f"postgresql+psycopg2://{encoded_user}:{encoded_password}@{host}:{port}/{db_name}?sslmode=require"
+# ── LangChain DB ─────────────────────────────────────────────────────────────
 db = SQLDatabase.from_uri(db_uri, engine_args={"poolclass": NullPool})
- 
-db.run("""
-    CREATE TABLE IF NOT EXISTS tasks(
-        id SERIAL PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        description TEXT,
-        status TEXT CHECK (status IN ('pending','in_progress','completed')) DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-""")
 
-# LLM + Agent
-
+# ── LLM + Agent ───────────────────────────────────────────────────────────────
 model = ChatGroq(model="openai/gpt-oss-20b")
 toolkit = SQLDatabaseToolkit(db=db, llm=model)
 tools = toolkit.get_tools()
- 
+
 system_prompt = f"""
 You are **TaskBot Pro**, an intelligent task management assistant connected to a **PostgreSQL database**.
- 
+
 The currently logged-in user is: **{username}**
- 
+
 CRITICAL RULE: You MUST always filter ALL queries by user_id = '{username}'.
 - SELECT queries: always add WHERE user_id = '{username}'
 - INSERT queries: always include user_id = '{username}'
 - UPDATE/DELETE queries: always add WHERE user_id = '{username}'
 - NEVER show tasks from other users under any circumstances
- 
+
 ---
- 
+
 # DATABASE SCHEMA
- 
+
 Table: **tasks**
- 
+
 Columns:
 - id (SERIAL PRIMARY KEY)
 - user_id (TEXT, always = '{username}')
@@ -270,71 +303,71 @@ Columns:
 - description (TEXT)
 - status (pending, in_progress, completed)
 - created_at (TIMESTAMP)
- 
+
 ---
- 
+
 # OUTPUT FORMAT (MANDATORY)
- 
+
 All task results MUST be shown as a **Markdown table**.
- 
+
 | ID | Title | Status | Created At |
 |----|-------|--------|------------|
- 
+
 Status emoji mapping:
 pending → 📥 Pending
 in_progress → ⏳ In Progress
 completed → ✅ Completed
- 
+
 - Never return raw SQL results
 - Never show SQL queries to the user
- 
+
 ---
- 
+
 # QUERY RULES
- 
+
 All SELECT queries MUST include:
 WHERE user_id = '{username}'
 ORDER BY created_at DESC
 LIMIT 10
- 
+
 ---
- 
+
 # TASK IDENTIFICATION
- 
+
 If a user refers to a task by title:
 1. SELECT to find it (with user_id filter)
 2. Get the ID
 3. Use ID for update/delete
- 
+
 ---
- 
+
 # TASK OPERATIONS
- 
+
 Creating: default status = pending, always set user_id = '{username}'
 Updating: identify by ID or title, confirm with SELECT
 Deleting: specific WHERE condition including user_id, confirm with SELECT
- 
+
 ---
- 
+
 # SAFETY RULES
- 
+
 Never execute: DROP TABLE, TRUNCATE, ALTER TABLE, DELETE without WHERE
 Only operate on the tasks table.
- 
+
 ---
- 
+
 # PROACTIVE ASSISTANCE
- 
+
 Task not found: "I couldn't find that task. Would you like me to add it?"
 Empty search: suggest creating a related task.
- 
+
 ---
- 
+
 # COMMUNICATION STYLE
- 
+
 Professional, Clear, Concise, Helpful.
 """
- 
+
 @st.cache_resource
 def get_agent(_model, _tools, _username):
     agent = create_agent(
@@ -344,13 +377,12 @@ def get_agent(_model, _tools, _username):
         system_prompt=system_prompt
     )
     return agent
- 
+
 agent = get_agent(model, tools, username)
 
-# Header
-
+# ── Header ────────────────────────────────────────────────────────────────────
 col_title, col_logout = st.columns([5, 1])
- 
+
 with col_title:
     st.markdown(f"""
     <div style="
@@ -379,14 +411,16 @@ with col_title:
         </p>
     </div>
     """, unsafe_allow_html=True)
- 
+
 with col_logout:
     st.markdown("<br><br><br>", unsafe_allow_html=True)
-    if st.session_state.get("authentication_status"):
-        authenticator.logout("Logout", location="main")
+    if st.button("Logout", key="logout_btn"):
+        st.session_state.authenticated = False
+        st.session_state.username = None
+        st.session_state.name = None
+        st.rerun()
 
-# Metrics
-
+# ── Metrics ───────────────────────────────────────────────────────────────────
 m1, m2, m3, m4 = st.columns(4)
 with m1:
     st.metric("🗄️  ENGINE", "PostgreSQL", "Stable ✓")
@@ -396,26 +430,25 @@ with m3:
     st.metric("⚡  MODE", "Proactive", "Enabled")
 with m4:
     st.metric("👤  USER", username, "Logged In")
- 
+
 st.markdown("<br>", unsafe_allow_html=True)
 st.info(f"💡 **System Note:** Logged in as **{username}**. Your tasks are private and isolated from other users.")
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Chat
-
+# ── Chat ──────────────────────────────────────────────────────────────────────
 chat_key = f"messages_{username}"
 if chat_key not in st.session_state:
     st.session_state[chat_key] = []
- 
+
 for message in st.session_state[chat_key]:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
- 
+
 prompt = st.chat_input("Ask me to manage your tasks…")
 if prompt:
     st.chat_message("user").markdown(prompt)
     st.session_state[chat_key].append({"role": "user", "content": prompt})
- 
+
     with st.chat_message("assistant"):
         with st.spinner("Processing…"):
             response = agent.invoke(
@@ -425,4 +458,3 @@ if prompt:
             result = response["messages"][-1].content
             st.markdown(result)
             st.session_state[chat_key].append({"role": "assistant", "content": result})
-
